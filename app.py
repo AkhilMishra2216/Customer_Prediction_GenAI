@@ -7,6 +7,7 @@ import os
 import sys
 import time
 from dotenv import load_dotenv
+from src.nlp_bilstm import build_text_for_inference, infer_nlp_signals, load_nlp_models
 
 load_dotenv()
 
@@ -288,17 +289,20 @@ def load_ml_artifacts():
     base = os.path.dirname(os.path.abspath(__file__))
     models_dir = os.path.join(base, "models")
     try:
+        nlp_model, nlp_meta = load_nlp_models(models_dir)
         return (
             joblib.load(os.path.join(models_dir, "churn_log_model.joblib")),
             joblib.load(os.path.join(models_dir, "churn_dt_model.joblib")),
             joblib.load(os.path.join(models_dir, "scaler.joblib")),
             joblib.load(os.path.join(models_dir, "feature_columns.joblib")),
             joblib.load(os.path.join(models_dir, "model_metrics.joblib")),
+            nlp_model,
+            nlp_meta,
         )
     except FileNotFoundError:
-        return None, None, None, None, None
+        return None, None, None, None, None, None, None
 
-log_model, dt_model, scaler, feature_cols, metrics = load_ml_artifacts()
+log_model, dt_model, scaler, feature_cols, metrics, nlp_model, nlp_meta = load_ml_artifacts()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -386,7 +390,9 @@ with st.sidebar:
         tenure = 12
         monthly = 50.0
         total = 600.0
+        senior_citizen = 0
         support = 1
+        support_text = ""
         avg_spend = 0.0
     else:
         st.markdown('<p style="font-size:0.85rem; font-weight:700; color:#A78BFA; margin-bottom:10px; letter-spacing:1px; text-transform:uppercase;">⚙️ Configuration</p>', unsafe_allow_html=True)
@@ -396,7 +402,14 @@ with st.sidebar:
         tenure = st.number_input("Tenure (months)", 0, 72, 12, help="How many months has the customer been with the company")
         monthly = st.number_input("Monthly Charges ($)", 0.0, 200.0, 50.0, format="%.2f")
         total = st.number_input("Total Charges ($)", 0.0, 10000.0, 600.0, format="%.2f")
+        senior_citizen = st.selectbox("Senior Citizen", [0, 1], help="Matches the training feature used by the ML model")
         support = st.number_input("Support Calls", 0, 10, 1, help="Number of times customer contacted support")
+        support_text = st.text_area(
+            "Support / Complaint Text",
+            value="",
+            help="Optional ticket, complaint, or feedback text for NLP signal extraction.",
+            height=90,
+        )
 
         avg_spend = total / (tenure + 1)
         st.markdown("<br>", unsafe_allow_html=True)
@@ -421,8 +434,23 @@ if log_model is not None:
     inp["tenure"] = tenure
     inp["MonthlyCharges"] = monthly
     inp["TotalCharges"] = total
-    inp["SeniorCitizen"] = min(support, 1)
+    inp["SeniorCitizen"] = senior_citizen
     inp["AvgMonthlySpend"] = avg_spend
+    nlp_signals = {"sentiment_score": 0.0, "issue_code": 0, "sentiment_label": "neutral", "issue_label": "general"}
+    if nlp_model is not None and nlp_meta is not None:
+        profile_for_text = {
+            "tenure": tenure,
+            "MonthlyCharges": monthly,
+            "Contract": "Month-to-month" if tenure < 12 else "One year",
+            "support_calls": support,
+            "SupportCalls": support,
+        }
+        nlp_text = build_text_for_inference(profile_for_text, support_text)
+        nlp_signals = infer_nlp_signals(nlp_model, nlp_meta, nlp_text)
+    if "nlp_sentiment_score" in inp:
+        inp["nlp_sentiment_score"] = nlp_signals["sentiment_score"]
+    if "nlp_issue_code" in inp:
+        inp["nlp_issue_code"] = nlp_signals["issue_code"]
 
     df = pd.DataFrame([inp])[feature_cols]
     scaled = scaler.transform(df)
@@ -431,7 +459,7 @@ if log_model is not None:
     if log_model is not None and dt_model is not None:
         active_model = log_model if model_choice == "Logistic Regression" else dt_model
         global_pred = active_model.predict(scaled)[0]
-    global_proba = active_model.predict_proba(scaled)[0][1]
+        global_proba = active_model.predict_proba(scaled)[0][1]
     global_is_churn = global_pred == 1
 
     # Build drivers
@@ -464,6 +492,16 @@ if log_model is not None:
     else:
         drivers_list.append(("low", "📞 No Support", "No recent support interactions — no friction signals."))
         drivers_text.append("No Support Issues")
+
+    if nlp_model is not None and nlp_meta is not None:
+        sentiment_label = nlp_signals["sentiment_label"]
+        issue_label = nlp_signals["issue_label"]
+        if sentiment_label == "negative":
+            drivers_list.append(("high", "🧾 Negative Sentiment", f"NLP sentiment is negative; issue category: {issue_label}."))
+        elif sentiment_label == "neutral":
+            drivers_list.append(("med", "🧾 Neutral Sentiment", f"NLP indicates mixed sentiment; issue category: {issue_label}."))
+        else:
+            drivers_list.append(("low", "🧾 Positive Sentiment", f"NLP sentiment is positive; issue category: {issue_label}."))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -549,10 +587,23 @@ with tab2:
             st.plotly_chart(gauge_chart(global_proba, global_is_churn),
                            use_container_width=True, config={"displayModeBar": False})
 
+        if nlp_model is not None and nlp_meta is not None:
+            st.markdown('<p class="sec-title">NLP Diagnostics</p>', unsafe_allow_html=True)
+            n1, n2, n3 = st.columns(3)
+            with n1:
+                st.metric("Sentiment", nlp_signals.get("sentiment_label", "N/A").title())
+            with n2:
+                st.metric("Issue Category", nlp_signals.get("issue_label", "N/A").title())
+            with n3:
+                st.metric("Sentiment Score", f"{nlp_signals.get('sentiment_score', 0.0):.3f}")
+            st.caption(
+                "NLP score ranges from -1 to +1, where lower values indicate stronger dissatisfaction."
+            )
+
         st.markdown('<p class="sec-title">Key Risk Drivers</p>', unsafe_allow_html=True)
         cols = st.columns(3)
         for i, (level, title, desc) in enumerate(drivers_list):
-            with cols[i]:
+            with cols[i % 3]:
                 st.markdown(f"""
                 <div class="driver-card driver-{level}">
                     <div style="font-weight:700; font-size:0.95rem; color:#FFFFFF;">{title}</div>
@@ -604,6 +655,10 @@ with tab3:
                     "total_charges": total,
                     "support_calls": support,
                     "avg_monthly_spend": round(avg_spend, 2),
+                    "support_text": support_text,
+                    "sentiment_label": nlp_signals.get("sentiment_label", "neutral"),
+                    "issue_label": nlp_signals.get("issue_label", "general"),
+                    "sentiment_score": nlp_signals.get("sentiment_score", 0.0),
                 },
                 "churn_probability": float(global_proba),
                 "churn_risk_level": "",

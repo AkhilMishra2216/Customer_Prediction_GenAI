@@ -101,6 +101,8 @@ def analyze_risk(state: AgentState) -> AgentState:
     tenure = profile.get("tenure", 0)
     monthly = profile.get("monthly_charges", 0)
     support = profile.get("support_calls", 0)
+    sentiment_label = profile.get("sentiment_label", "neutral")
+    issue_label = profile.get("issue_label", "general")
 
     if tenure < 12:
         drivers.append(f"Early tenure ({tenure} months) — high first-year attrition risk")
@@ -122,6 +124,13 @@ def analyze_risk(state: AgentState) -> AgentState:
         drivers.append(f"Some support contacts ({support} call(s)) — friction indicator")
     else:
         drivers.append("No support contacts — no friction signals")
+
+    if sentiment_label == "negative":
+        drivers.append(f"NLP sentiment is negative with issue category '{issue_label}'")
+    elif sentiment_label == "neutral":
+        drivers.append(f"NLP sentiment is neutral with issue category '{issue_label}'")
+    else:
+        drivers.append(f"NLP sentiment is positive with issue category '{issue_label}'")
 
     state["drivers"] = drivers
     return state
@@ -152,6 +161,10 @@ def retrieve_strategies(state: AgentState) -> AgentState:
         query += f" Customer tenure: {profile.get('tenure', 0)} months."
         query += f" Monthly charges: ${profile.get('monthly_charges', 0)}."
         query += f" Churn probability: {state.get('churn_probability', 0):.0%}."
+        query += f" Sentiment: {profile.get('sentiment_label', 'neutral')}."
+        query += f" Issue category: {profile.get('issue_label', 'general')}."
+        if profile.get("support_text"):
+            query += f" Ticket text: {profile.get('support_text')[:220]}."
 
         # Retrieve top-3 most relevant strategies
         results = vectorstore.similarity_search(query, k=3)
@@ -215,6 +228,9 @@ IMPORTANT INSTRUCTIONS:
 • Total Charges: ${profile.get('total_charges', 'N/A')}
 • Support Calls: {profile.get('support_calls', 'N/A')}
 • Avg Monthly Spend: ${profile.get('avg_monthly_spend', 'N/A')}
+• NLP Sentiment: {profile.get('sentiment_label', 'N/A')}
+• NLP Issue Category: {profile.get('issue_label', 'N/A')}
+• Ticket/Feedback Snippet: {str(profile.get('support_text', 'N/A'))[:220]}
 
 ═══ IDENTIFIED RISK DRIVERS ═══
 {chr(10).join(f'• {d}' for d in drivers)}

@@ -7,8 +7,7 @@ langchain
 langchain-core
 langgraph
 langchain-openai
-langchain-google-genai
 langchain-community
 faiss-cpu
 python-dotenv
- 
+tensorflow
