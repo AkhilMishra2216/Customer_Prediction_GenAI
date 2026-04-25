@@ -71,7 +71,7 @@ This processes `data/Customer-Churn.csv`, trains both models, and saves artifact
 ```bash
 streamlit run app.py
 # or
-streamlit run streamlit.py
+streamlit run streamlit_app.py
 ```
 
 Opens at `http://localhost:8501`.
@@ -80,7 +80,7 @@ Opens at `http://localhost:8501`.
 
 1. Push this repo to GitHub.
 2. In Streamlit Cloud, set:
-   - **Main file path**: `streamlit.py` (or `app.py`)
+   - **Main file path**: `streamlit_app.py` (or `app.py`)
    - **Python version**: from `runtime.txt` (`python-3.11`)
 3. Add secret in app settings:
    - `OPENROUTER_API_KEY = "your_key_here"`
