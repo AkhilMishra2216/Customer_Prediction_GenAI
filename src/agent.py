@@ -22,7 +22,6 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
-# ─── Local TF-IDF Embeddings (no API needed) ─────────────────────────────────
 class TfidfEmbeddings(Embeddings):
     """Local TF-IDF embeddings using sklearn — runs entirely offline, no API calls."""
 
@@ -46,20 +45,18 @@ class TfidfEmbeddings(Embeddings):
         return vector.tolist()
 
 
-# ─── Explicit State Definition ────────────────────────────────────────────────
 class AgentState(TypedDict):
     """Explicit state management across all workflow steps."""
-    customer_profile: dict          # tenure, monthly_charges, total_charges, support_calls
-    churn_probability: float        # 0.0 - 1.0
-    churn_risk_level: str           # "High Risk" | "Medium Risk" | "Low Risk"
-    drivers: List[str]              # human-readable risk driver descriptions
-    retrieved_strategies: str       # RAG-retrieved strategy text
-    report: str                     # final structured output
-    error: Optional[str]            # error message if any step fails
-    api_key: Optional[str]          # Dynamic API key from Streamlit UI
+    customer_profile: dict
+    churn_probability: float
+    churn_risk_level: str
+    drivers: List[str]
+    retrieved_strategies: str
+    report: str
+    error: Optional[str]
+    api_key: Optional[str]
 
 
-# ─── Knowledge Base Loader ────────────────────────────────────────────────────
 def _load_knowledge_base() -> List[Document]:
     """Load and parse the retention strategies knowledge base into documents."""
     base = os.path.dirname(os.path.abspath(__file__))
@@ -69,12 +66,11 @@ def _load_knowledge_base() -> List[Document]:
     with open(path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # Split by strategy headers
     chunks = content.split("## Strategy:")
     docs = []
     for chunk in chunks:
         chunk = chunk.strip()
-        if chunk and len(chunk) > 50:  # Skip header/empty chunks
+        if chunk and len(chunk) > 50:
             docs.append(Document(
                 page_content=f"Retention Strategy: {chunk}",
                 metadata={"source": "retention_strategies.txt"}
@@ -82,13 +78,11 @@ def _load_knowledge_base() -> List[Document]:
     return docs
 
 
-# ─── Node 1: Analyze Risk ────────────────────────────────────────────────────
 def analyze_risk(state: AgentState) -> AgentState:
     """Analyze the customer profile and determine risk level with reasoning."""
     profile = state.get("customer_profile", {})
     prob = state.get("churn_probability", 0.0)
 
-    # Determine risk level
     if prob >= 0.6:
         state["churn_risk_level"] = "High Risk"
     elif prob >= 0.35:
@@ -96,7 +90,6 @@ def analyze_risk(state: AgentState) -> AgentState:
     else:
         state["churn_risk_level"] = "Low Risk"
 
-    # Build driver descriptions for RAG query
     drivers = []
     tenure = profile.get("tenure", 0)
     monthly = profile.get("monthly_charges", 0)
@@ -136,14 +129,12 @@ def analyze_risk(state: AgentState) -> AgentState:
     return state
 
 
-# ─── Node 2: Retrieve Strategies (RAG via FAISS + TF-IDF) ────────────────────
 def retrieve_strategies(state: AgentState) -> AgentState:
     """Use FAISS vector store + local TF-IDF embeddings to retrieve relevant retention strategies."""
     if state.get("error"):
         return state
 
     try:
-        # Local embeddings — no API call needed
         embeddings = TfidfEmbeddings()
 
         docs = _load_knowledge_base()
@@ -151,10 +142,8 @@ def retrieve_strategies(state: AgentState) -> AgentState:
             state["retrieved_strategies"] = "No retention knowledge base found."
             return state
 
-        # Build ephemeral FAISS vector store with local embeddings
         vectorstore = FAISS.from_documents(docs, embeddings)
 
-        # Construct semantic query from customer drivers
         profile = state.get("customer_profile", {})
         query_parts = state.get("drivers", [])
         query = " ".join(query_parts)
@@ -166,7 +155,6 @@ def retrieve_strategies(state: AgentState) -> AgentState:
         if profile.get("support_text"):
             query += f" Ticket text: {profile.get('support_text')[:220]}."
 
-        # Retrieve top-3 most relevant strategies
         results = vectorstore.similarity_search(query, k=3)
         strategies_text = "\n\n---\n\n".join([doc.page_content for doc in results])
         state["retrieved_strategies"] = strategies_text
@@ -178,13 +166,11 @@ def retrieve_strategies(state: AgentState) -> AgentState:
         return state
 
 
-# ─── Node 3: Generate Report (LLM) ───────────────────────────────────────────
 def generate_report(state: AgentState) -> AgentState:
     """Generate structured retention report using OpenRouter LLM with anti-hallucination prompting."""
     if state.get("error"):
         return state
 
-    # Resolve API key: state dict → st.secrets (Streamlit Cloud) → os.getenv (.env)
     api_key = state.get("api_key") or OPENROUTER_API_KEY
     if not api_key or len(api_key) < 10:
         try:
@@ -201,7 +187,7 @@ def generate_report(state: AgentState) -> AgentState:
             model="anthropic/claude-3-haiku",
             openai_api_key=api_key,
             openai_api_base=OPENROUTER_BASE_URL,
-            temperature=0.15,  # Low temperature for factual, grounded output
+            temperature=0.15,
             default_headers={"HTTP-Referer": "http://localhost:8501", "X-Title": "ChurnSense"}
         )
 
@@ -211,7 +197,6 @@ def generate_report(state: AgentState) -> AgentState:
         drivers = state.get("drivers", [])
         strategies = state.get("retrieved_strategies", "")
 
-        # ── Anti-hallucination prompt engineering ──
         prompt = f"""You are a Customer Retention AI Analyst. Your task is to generate a structured retention report.
 
 IMPORTANT INSTRUCTIONS:
@@ -265,17 +250,14 @@ Standard disclaimer that these are AI-generated recommendations that should be r
         return state
 
 
-# ─── Build the LangGraph Workflow ─────────────────────────────────────────────
 def build_retention_agent():
     """Construct and compile the LangGraph state machine for retention analysis."""
     workflow = StateGraph(AgentState)
 
-    # Add nodes
     workflow.add_node("analyze_risk", analyze_risk)
     workflow.add_node("retrieve_strategies", retrieve_strategies)
     workflow.add_node("generate_report", generate_report)
 
-    # Define edges (linear pipeline)
     workflow.set_entry_point("analyze_risk")
     workflow.add_edge("analyze_risk", "retrieve_strategies")
     workflow.add_edge("retrieve_strategies", "generate_report")

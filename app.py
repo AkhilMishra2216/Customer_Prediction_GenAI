@@ -11,7 +11,6 @@ from src.nlp_bilstm import build_text_for_inference, infer_nlp_signals, load_nlp
 
 load_dotenv()
 
-# Add project root to path for src imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 st.set_page_config(
@@ -21,9 +20,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PREMIUM CSS
-# ═══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -281,9 +277,6 @@ section[data-testid="stSidebar"] * {
 """, unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# LOAD ML ARTIFACTS
-# ═══════════════════════════════════════════════════════════════════════════════
 @st.cache_resource
 def load_ml_artifacts():
     base = os.path.dirname(os.path.abspath(__file__))
@@ -294,7 +287,6 @@ def load_ml_artifacts():
         "scaler": "scaler.joblib",
     }
 
-    # Only these three artifacts are required for app inference.
     for fname in core_files.values():
         if not os.path.exists(os.path.join(models_dir, fname)):
             return None, None, None, None, None, None, None
@@ -303,7 +295,6 @@ def load_ml_artifacts():
     dt_model = joblib.load(os.path.join(models_dir, core_files["dt_model"]))
     scaler = joblib.load(os.path.join(models_dir, core_files["scaler"]))
 
-    # Optional artifacts: keep app usable even if they are not present.
     feature_cols_path = os.path.join(models_dir, "feature_columns.joblib")
     metrics_path = os.path.join(models_dir, "model_metrics.joblib")
     feature_cols = (
@@ -319,9 +310,6 @@ def load_ml_artifacts():
 log_model, dt_model, scaler, feature_cols, metrics, nlp_model, nlp_meta = load_ml_artifacts()
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# CHART HELPERS
-# ═══════════════════════════════════════════════════════════════════════════════
 def gauge_chart(prob, is_churn):
     color = "#EF4444" if is_churn else "#10B981"
     fig = go.Figure(go.Indicator(
@@ -386,9 +374,6 @@ def importance_chart(feat_imp):
     return fig
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# SIDEBAR
-# ═══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("""
     <div class="sidebar-brand">
@@ -433,9 +418,6 @@ with st.sidebar:
         st.markdown('<p style="font-size:0.7rem; color:#475569; text-align:center;">Pipeline: Feature Eng → Scaling → Inference → AI Agent</p>', unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# GLOBAL PREDICTIONS
-# ═══════════════════════════════════════════════════════════════════════════════
 st.title("ChurnSense")
 st.caption("Agentic AI-powered customer churn prediction & retention strategy platform.")
 
@@ -469,14 +451,12 @@ if log_model is not None:
     df = pd.DataFrame([inp])[feature_cols]
     scaled = scaler.transform(df)
 
-    # Inference
     if log_model is not None and dt_model is not None:
         active_model = log_model if model_choice == "Logistic Regression" else dt_model
         global_pred = active_model.predict(scaled)[0]
         global_proba = active_model.predict_proba(scaled)[0][1]
     global_is_churn = global_pred == 1
 
-    # Build drivers
     if tenure < 12:
         drivers_list.append(("high", "📅 Low Tenure", f"{tenure} months — new customers are statistically more likely to churn quickly."))
         drivers_text.append("Low Tenure (< 12 months)")
@@ -518,13 +498,9 @@ if log_model is not None:
             drivers_list.append(("low", "🧾 Positive Sentiment", f"NLP sentiment is positive; issue category: {issue_label}."))
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TABS
-# ═══════════════════════════════════════════════════════════════════════════════
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["🏠 Dashboard", "🔮 Predictions", "🤖 Agentic AI", "📈 Model Metrics", "📐 LangGraph"])
 
 
-# ─── Tab 1: Dashboard ────────────────────────────────────────────────────────
 with tab1:
     st.markdown("""
     <div class="card">
@@ -571,7 +547,6 @@ with tab1:
             """, unsafe_allow_html=True)
 
 
-# ─── Tab 2: Predictions ──────────────────────────────────────────────────────
 with tab2:
     if log_model is not None:
         st.markdown('<p class="sec-title" style="margin-top:0;">Prediction Overview</p>', unsafe_allow_html=True)
@@ -627,12 +602,10 @@ with tab2:
         st.error("Model files not found. Run `python3 src/train_model.py` first.")
 
 
-# ─── Tab 3: Agentic AI ───────────────────────────────────────────────────────
 with tab3:
     st.markdown('<p class="sec-title" style="margin-top:0;">🤖 Agentic AI Retention Strategy</p>', unsafe_allow_html=True)
     st.caption("Autonomously analyzes risk, retrieves best practices via RAG, and generates structured retention reports using LangGraph.")
 
-    # Architecture diagram
     st.markdown("""
     <div class="card" style="padding:16px 20px;">
         <div style="font-size:0.78rem; font-weight:600; color:#A78BFA; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">LangGraph Workflow Pipeline</div>
@@ -655,7 +628,6 @@ with tab3:
             from src.agent import build_retention_agent
 
             agent = build_retention_agent()
-            # Retrieve API key: st.secrets (Streamlit Cloud) → os.getenv (local .env)
             _api_key = None
             try:
                 _api_key = st.secrets["OPENROUTER_API_KEY"]
@@ -683,14 +655,12 @@ with tab3:
                 "api_key": _api_key,
             }
 
-            # Generator for typewriter effect
             def stream_data(text, delay=0.015):
                 """Simulates a live streaming output."""
                 for word in text.split(" "):
                     yield word + " "
                     time.sleep(delay)
 
-            # Interactive Pipeline Status
             with st.status("🧠 **Agentic AI Pipeline Initiated...**", expanded=True) as status:
                 st.write("🕵️ Analyzing customer risk profile and key drivers...")
                 time.sleep(0.6)
@@ -700,7 +670,6 @@ with tab3:
                 
                 st.write("✍️ Synthesizing tailored report using Claude 3 Haiku...")
                 
-                # Execute graph
                 result = agent.invoke(initial_state)
                 
                 if result.get("error"):
@@ -709,12 +678,10 @@ with tab3:
                 else:
                     status.update(label="Strategy generated successfully!", state="complete", expanded=False)
 
-            # Display the interactive report
             if not result.get("error"):
                 st.toast("Report generated successfully!", icon="🎉")
                 st.balloons()
 
-                # Report header styling
                 st.markdown(f"""
                 <div class="agent-report" style="margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; box-shadow: none;">
                     <div style="font-size:1.1rem; font-weight:700; color:#A78BFA; margin-bottom:0px; display:flex; align-items:center; gap:8px;">
@@ -724,12 +691,10 @@ with tab3:
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Premium conversational streaming output
                 with st.chat_message("assistant", avatar="🤖"):
                     st.write_stream(stream_data(result["report"]))
 
 
-# ─── Tab 4: Model Metrics ────────────────────────────────────────────────────
 with tab4:
     st.markdown('<p class="sec-title" style="margin-top:0;">Model Performance</p>', unsafe_allow_html=True)
     st.caption("Evaluation metrics and comparative analysis of trained algorithms.")
@@ -771,12 +736,10 @@ with tab4:
         """, icon="🧠")
 
 
-# ─── Tab 5: LangGraph Implementation ─────────────────────────────────────────
 with tab5:
     st.markdown('<p class="sec-title" style="margin-top:0;">📐 LangGraph Implementation</p>', unsafe_allow_html=True)
     st.caption("Architecture, state management, and node-level breakdown of the agentic retention pipeline.")
 
-    # --- Pipeline Diagram ---
     st.markdown("""
     <div class="card" style="padding:16px 20px;">
         <div style="font-size:0.78rem; font-weight:600; color:#A78BFA; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px;">Workflow Pipeline</div>
@@ -792,7 +755,6 @@ with tab5:
     </div>
     """, unsafe_allow_html=True)
 
-    # --- Node Detail Cards ---
     st.markdown('<p class="sec-title">Pipeline Node Breakdown</p>', unsafe_allow_html=True)
 
     n1, n2, n3 = st.columns(3)
@@ -842,7 +804,6 @@ with tab5:
         </div>
         """, unsafe_allow_html=True)
 
-    # --- State Flow Table ---
     st.markdown('<p class="sec-title">AgentState — Typed State Management</p>', unsafe_allow_html=True)
     st.caption("Every field is explicitly declared via Python's `TypedDict`. State flows across all nodes deterministically.")
 
@@ -862,7 +823,6 @@ with tab5:
     })
     st.dataframe(state_df, hide_index=True, use_container_width=True)
 
-    # --- Knowledge Base Strategies Table ---
     st.markdown('<p class="sec-title">RAG Knowledge Base — Retention Strategies</p>', unsafe_allow_html=True)
     st.caption("6 expert-curated strategies with academic citations, retrieved via FAISS similarity search.")
 
@@ -902,7 +862,6 @@ with tab5:
     })
     st.dataframe(kb_df, hide_index=True, use_container_width=True)
 
-    # --- Tech Stack Summary ---
     st.markdown('<p class="sec-title">Agentic AI Technology Stack</p>', unsafe_allow_html=True)
 
     tech_df = pd.DataFrame({
@@ -919,18 +878,15 @@ with tab5:
     })
     st.dataframe(tech_df, hide_index=True, use_container_width=True)
 
-    # --- Graph Code Preview ---
     st.markdown('<p class="sec-title">LangGraph — Compiled StateGraph</p>', unsafe_allow_html=True)
     st.code("""
 def build_retention_agent():
     workflow = StateGraph(AgentState)
 
-    # Register nodes
     workflow.add_node("analyze_risk", analyze_risk)
     workflow.add_node("retrieve_strategies", retrieve_strategies)
     workflow.add_node("generate_report", generate_report)
 
-    # Wire edges (linear pipeline)
     workflow.set_entry_point("analyze_risk")
     workflow.add_edge("analyze_risk", "retrieve_strategies")
     workflow.add_edge("retrieve_strategies", "generate_report")
