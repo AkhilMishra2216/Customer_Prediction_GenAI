@@ -50,7 +50,11 @@ echo "OPENROUTER_API_KEY=your_key_here" > .env
 ```
 
 **Dependencies include:**
-`streamlit`, `pandas`, `scikit-learn`, `plotly`, `joblib`, `tensorflow`, `langchain`, `langgraph`, `langchain-openai`, `langchain-community`, `faiss-cpu`, `python-dotenv`
+`streamlit`, `pandas`, `scikit-learn`, `plotly`, `joblib`, `langchain`, `langgraph`, `langchain-openai`, `langchain-community`, `faiss-cpu`, `python-dotenv`
+
+> Note: `tensorflow` is intentionally not part of the default deployment requirements to keep Streamlit Cloud builds stable.  
+> If you want to retrain/run the BiLSTM NLP model locally, install it manually:
+> `pip install tensorflow`
 
 ### Training the Models
 
