@@ -288,19 +288,33 @@ section[data-testid="stSidebar"] * {
 def load_ml_artifacts():
     base = os.path.dirname(os.path.abspath(__file__))
     models_dir = os.path.join(base, "models")
-    try:
-        nlp_model, nlp_meta = load_nlp_models(models_dir)
-        return (
-            joblib.load(os.path.join(models_dir, "churn_log_model.joblib")),
-            joblib.load(os.path.join(models_dir, "churn_dt_model.joblib")),
-            joblib.load(os.path.join(models_dir, "scaler.joblib")),
-            joblib.load(os.path.join(models_dir, "feature_columns.joblib")),
-            joblib.load(os.path.join(models_dir, "model_metrics.joblib")),
-            nlp_model,
-            nlp_meta,
-        )
-    except FileNotFoundError:
-        return None, None, None, None, None, None, None
+    core_files = {
+        "log_model": "churn_log_model.joblib",
+        "dt_model": "churn_dt_model.joblib",
+        "scaler": "scaler.joblib",
+    }
+
+    # Only these three artifacts are required for app inference.
+    for fname in core_files.values():
+        if not os.path.exists(os.path.join(models_dir, fname)):
+            return None, None, None, None, None, None, None
+
+    log_model = joblib.load(os.path.join(models_dir, core_files["log_model"]))
+    dt_model = joblib.load(os.path.join(models_dir, core_files["dt_model"]))
+    scaler = joblib.load(os.path.join(models_dir, core_files["scaler"]))
+
+    # Optional artifacts: keep app usable even if they are not present.
+    feature_cols_path = os.path.join(models_dir, "feature_columns.joblib")
+    metrics_path = os.path.join(models_dir, "model_metrics.joblib")
+    feature_cols = (
+        joblib.load(feature_cols_path)
+        if os.path.exists(feature_cols_path)
+        else ["tenure", "MonthlyCharges", "TotalCharges", "SeniorCitizen", "AvgMonthlySpend"]
+    )
+    metrics = joblib.load(metrics_path) if os.path.exists(metrics_path) else None
+
+    nlp_model, nlp_meta = load_nlp_models(models_dir)
+    return log_model, dt_model, scaler, feature_cols, metrics, nlp_model, nlp_meta
 
 log_model, dt_model, scaler, feature_cols, metrics, nlp_model, nlp_meta = load_ml_artifacts()
 

@@ -66,9 +66,23 @@ This processes `data/Customer-Churn.csv`, trains both models, and saves artifact
 
 ```bash
 streamlit run app.py
+# or
+streamlit run streamlit.py
 ```
 
 Opens at `http://localhost:8501`.
+
+### Deploying on Streamlit Cloud
+
+1. Push this repo to GitHub.
+2. In Streamlit Cloud, set:
+   - **Main file path**: `streamlit.py` (or `app.py`)
+   - **Python version**: from `runtime.txt` (`python-3.11`)
+3. Add secret in app settings:
+   - `OPENROUTER_API_KEY = "your_key_here"`
+4. Deploy.
+
+The app now tolerates missing optional artifacts (`feature_columns.joblib`, `model_metrics.joblib`) so deployment does not fail if only core model files are present.
 
 ### Quick Commands
 
